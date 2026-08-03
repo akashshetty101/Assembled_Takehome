@@ -25,6 +25,16 @@ def connect(settings: Settings) -> sqlite3.Connection:
     return conn
 
 
+# CREATE TABLE IF NOT EXISTS only creates tables that don't exist yet -- against
+# a table already on disk from an older schema version it's a no-op, so a column
+# added to schema.sql after that table shipped (e.g. episodes.stale_since in
+# phase 9) never reaches a pre-existing database. Each entry here is applied as
+# an idempotent ALTER TABLE ... ADD COLUMN to close that gap.
+_ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("episodes", "stale_since", "TEXT"),
+)
+
+
 def migrate(conn: sqlite3.Connection, settings: Settings) -> None:
     """Idempotent: schema.sql is entirely CREATE ... IF NOT EXISTS.
     executescript() commits any pending transaction before running, and DDL
@@ -32,6 +42,15 @@ def migrate(conn: sqlite3.Connection, settings: Settings) -> None:
     commit() is needed here."""
     schema_path = Path(settings.schema_path)
     conn.executescript(schema_path.read_text())
+    _apply_additive_columns(conn)
+
+
+def _apply_additive_columns(conn: sqlite3.Connection) -> None:
+    for table, column, coldef in _ADDITIVE_COLUMNS:
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coldef}")
+    conn.commit()
 
 
 @contextmanager

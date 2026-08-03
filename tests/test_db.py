@@ -148,6 +148,47 @@ def test_transaction_rolls_back_all_statements_on_exception(settings):
         reconnected.close()
 
 
+def test_migrate_adds_columns_added_to_schema_after_a_table_already_exists(settings):
+    """CREATE TABLE IF NOT EXISTS no-ops against a table already on disk, so a
+    column added to schema.sql later (episodes.stale_since, phase 9) would
+    never reach a database whose episodes table predates it. migrate() must
+    backfill the column onto the existing table without touching its data."""
+    conn = connect(settings)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE episodes (
+                id TEXT PRIMARY KEY,
+                rule_id TEXT NOT NULL,
+                subject_id TEXT NOT NULL,
+                state TEXT NOT NULL,
+                first_true_at TEXT,
+                opened_at TEXT,
+                closed_at TEXT,
+                last_notified_at TEXT,
+                notify_seq INTEGER NOT NULL DEFAULT 0,
+                evaluations_suppressed INTEGER NOT NULL DEFAULT 0,
+                stale INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO episodes (id, rule_id, subject_id, state, notify_seq, "
+            "evaluations_suppressed, stale) VALUES ('ep_1', 'r1', 's1', 'open', 0, 0, 0)"
+        )
+        conn.commit()
+
+        migrate(conn, settings)
+
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(episodes)")}
+        assert "stale_since" in columns
+        row = conn.execute("SELECT * FROM episodes WHERE id = 'ep_1'").fetchone()
+        assert row["id"] == "ep_1"
+        assert row["stale_since"] is None
+    finally:
+        conn.close()
+
+
 def test_transaction_spans_multiple_repository_writes_atomically(settings):
     """The R4 scenario itself: event append + subject-state watermark update
     as one atomic unit, using the real repository classes (not raw SQL)."""
