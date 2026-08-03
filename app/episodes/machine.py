@@ -36,12 +36,6 @@ def advance(
     it was: this is the scoped, cheap fix for the dangerous half only
     (Phase 10 -- full three-valued logic -- is the general fix).
 
-    Code-review CRITICAL fix: "facts the rule's conditions depend on" is
-    not just `condition.fact` -- a FactRef condition (e.g. `longest_wait_sec
-    > {fact_ref: sla_target_sec}`, the real seeded SLA rule) also depends on
-    its fact_ref TARGET; missing that would let the exact bug back in
-    through the fact_ref door. Mirrors domain/rules.py's own
-    `declared_facts` construction.
     """
     if episode is not None:
         if episode.rule_id != rule_id:

@@ -162,13 +162,15 @@ state.
 
 ## 6. Unknown-as-false: a stated limitation
 
-v1 treats an uncomputable fact as `false`. This is deliberate and documented, not an
-oversight — three-valued logic (`TRUE | FALSE | UNKNOWN` with Kleene conjunction) is a
-real, scoped, droppable phase (Phase 10 in `PLAN.md`) that wasn't started this round,
-because the asymmetry it exists to fix has a much cheaper partial fix (Phase 9,
-"resolve hardening" — also not started, but scoped separately and explicitly cheaper).
+v1 still treats an uncomputable fact as `false` at the point a condition is actually
+evaluated (`evaluation/operators.py`) — full three-valued logic (`TRUE | FALSE |
+UNKNOWN` with Kleene conjunction) is a real, scoped, droppable phase (Phase 10 in
+`PLAN.md`) that has not been started. What **has** shipped is the cheaper, targeted fix
+for the dangerous half of the asymmetry below: Phase 9, "resolve hardening"
+(`episodes/machine.py`), which freezes an already-open episode instead of resolving it
+when a fact it depends on goes missing.
 
-The asymmetry has to be stated plainly, because it isn't symmetric:
+The asymmetry still has to be stated plainly, because it isn't symmetric:
 
 - **Opening** an episode on a missing fact fails **safe** — a missed alert, not a false
   one. Reachable in the real sample data: `evt_01HXYZ086` reports `a_23` with
@@ -177,24 +179,29 @@ The asymmetry has to be stated plainly, because it isn't symmetric:
   `MISSING` by design (`domain/facts.py`'s `MISSING` sentinel, distinct from `None` and
   `False` since Phase 2 specifically so this retrofit wouldn't touch every extractor
   later) whenever `violation_start_source == "unknown"` — never guessing a start time.
-- **Resolving** an episode on a missing fact fails **dangerous**. If a fact that was
-  driving an *already-open* episode goes missing, the current v1 behavior collapses it
-  to `false`, closes the episode, and emits a `resolved` notification that never
-  actually happened — asserting "recovered" with no evidence. This is directly visible
-  today: the demo output below includes `a_19 has been out of adherence for unknowns`
-  on a `RESOLVED` transition, because `adherence_violation_duration_sec` went `MISSING`
-  (the violation genuinely cleared — `in_adherence_violation` correctly reads `False` —
-  but this exact code path can't currently distinguish "genuinely cleared" from "we
-  lost the ability to compute this," which is the bug class this limitation is about).
-  This is *not* reachable via the un-doctored real sample data, which is exactly why it
-  would ship unnoticed without the tests written against it now.
+  This half is still unfixed and still v1's behavior: a missed alert, not a false one.
+- **Resolving** an episode on a missing fact used to fail **dangerous**, and no longer
+  does. If a fact driving an *already-open* episode goes missing, `advance()` no longer
+  collapses it to `false` and emits a `resolved` notification that never actually
+  happened; instead it freezes the episode (`stale=True`, `stale_since` recorded) and
+  emits nothing. This is directly visible in the real sample data: `a_19`'s "out of
+  adherence" episode reaches `evt_01HXYZ076` (`10:10:30`), where the violation
+  genuinely clears — `in_adherence_violation` correctly reads `False` — but
+  `adherence_violation_duration_sec` goes `MISSING` in the same instant, because the
+  system can no longer distinguish "genuinely cleared" from "lost the ability to
+  compute this" from that fact alone. Pre-Phase-9, this produced a false
+  `"a_19 has been out of adherence for unknowns"` `RESOLVED` notification; today it
+  instead leaves the episode `open` and `stale` for the rest of the replay, with no
+  notification at all (see §8). A fresh `adherence_check` supplying a real
+  `violation_started_at` would thaw it; the sample data doesn't provide one after this
+  point.
 
 `missing_facts` is already threaded through `EvaluationResult` and asserted on directly
-in tests marked `TODO(3vl)` (Phase 2), so the eventual fix is meant to be an assertion
-flip, not new plumbing: Phase 9 (cheap, high-value — freeze an episode as `stale`
-instead of resolving it when a driving fact goes missing) or the fuller Phase 10 (real
-three-valued logic throughout the evaluator). Neither shipped this round; both are
-scoped and ready.
+in tests marked `TODO(3vl)` (Phase 2), so Phase 9's fix was an assertion flip on top of
+that plumbing, not new machinery: freeze an episode as `stale` instead of resolving it
+when a driving fact goes missing. That's shipped. The fuller Phase 10 (real
+three-valued logic throughout the evaluator, closing the "opening" half of the
+asymmetry too) has not been started.
 
 ## 7. AI tool usage and verification method
 
@@ -297,15 +304,14 @@ duplicate event evt_01HXYZ050 has a different payload than the stored one: {'ts'
 [09:30:00] #ops-alerts — billing has 18 tickets waiting
 [09:35:00] @lead_sam — billing is breaching SLA: 130 > 120
 [09:45:05] @a_19 — a_19 has been out of adherence for 605.0s
-[09:55:05] @lead_sam — a_11 has been on a single call for 2705.0s
 [09:55:05] @a_19 — a_19 has been out of adherence for 1205.0s
+[09:55:05] @lead_sam — a_11 has been on a single call for 2705.0s
 [10:00:00] #ops-alerts — billing has 17 tickets waiting
 [10:00:00] #ops-alerts — billing has 14 tickets waiting
 [10:05:00] @lead_sam — tier_2 is breaching SLA: 320 > 300
 [10:05:05] @a_19 — a_19 has been out of adherence for 1805.0s
 [10:10:05] @lead_sam — a_07 has been on a single call for 2705.0s
 [10:10:05] @a_88 — a_88 has been out of adherence for 605.0s
-[10:10:30] @a_19 — a_19 has been out of adherence for unknowns
 [10:15:00] @lead_sam — billing is breaching SLA: 90 > 120
 [10:15:00] @lead_sam — tier_2 is breaching SLA: 180 > 300
 [10:15:05] @lead_sam — a_31 has been on a single call for 2705.0s
@@ -367,8 +373,7 @@ happened, how long the condition held quietly before or after the notification:
              why: in_adherence_violation=True, adherence_violation_duration_sec=1205.0
   [REMINDER] a_19 has been out of adherence for 1805.0s
              why: in_adherence_violation=True, adherence_violation_duration_sec=1805.0
-  [RESOLVED] a_19 has been out of adherence for unknowns
-             why: in_adherence_violation=False, adherence_violation_duration_sec=MISSING
+             stale — awaiting data
 
 -- a_88 --
   [OPENED  ] a_88 has been out of adherence for 605.0s
@@ -381,6 +386,9 @@ happened, how long the condition held quietly before or after the notification:
 Note the `tier_2` SLA rule and the `billing` SLA rule are the **same rule
 definition** — one produced zero notifications early on and one `opened` + one
 `resolved` later; the other produced its own independent `opened`/`resolved` pair.
-Same evaluator, different outcomes, driven entirely by data. And the `a_19` `RESOLVED`
-line reading `"for unknowns"` is the unknown-as-false limitation from §6, visible in
-this exact run — not a hidden edge case.
+Same evaluator, different outcomes, driven entirely by data. And `a_19`'s episode never
+reaches `RESOLVED` at all: its adherence violation genuinely clears at `10:10:30`, but
+`adherence_violation_duration_sec` goes `MISSING` in that same instant, so — per §6's
+Phase 9 fix — the episode freezes as `stale` (`stale — awaiting data`, above) instead
+of emitting a false `resolved`. It stays open and stale for the rest of this replay;
+nothing in the sample data supplies a fresh `violation_started_at` to thaw it.
