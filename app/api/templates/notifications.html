@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+<head>
+  <title>Notifications</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    .stats { background: #f4f4f4; padding: 0.75rem 1rem; margin-bottom: 1.5rem; font-size: 0.9rem; }
+    .stats span { margin-right: 1.5rem; }
+    .recipient-group { margin-bottom: 2rem; }
+    .recipient-group h2 { border-bottom: 1px solid #ddd; padding-bottom: 0.25rem; }
+    .notification { padding: 0.5rem 0; border-bottom: 1px solid #eee; }
+    .notification .transition { font-weight: bold; text-transform: uppercase; font-size: 0.75rem; }
+    .notification .body { margin: 0.25rem 0; }
+    .notification .why { color: #666; font-size: 0.85rem; }
+    .notification .suppression { color: #999; font-size: 0.8rem; font-style: italic; margin-top: 0.15rem; }
+    .transition-opened { color: #b45309; }
+    .transition-reminder { color: #1d4ed8; }
+    .transition-resolved { color: #15803d; }
+  </style>
+</head>
+<body>
+  <h1>Notifications</h1>
+  <div class="stats">
+    {% for name, value in counters.items() %}
+      <span>{{ name }}: {{ value }}</span>
+    {% endfor %}
+  </div>
+
+  {% if not grouped %}
+    <p>No notifications yet.</p>
+  {% endif %}
+
+  {% for recipient, notifs in grouped.items() %}
+  <div class="recipient-group">
+    <h2>{{ recipient }}</h2>
+    {% for n in notifs %}
+    <div class="notification">
+      <span class="transition transition-{{ n.transition }}">{{ n.transition }}</span>
+      <div class="body">{{ n.body }}</div>
+      <div class="why">
+        why:
+        {% for key, value in n.facts_snapshot.items() %}
+          {{ key }}={{ value }}{% if not loop.last %}, {% endif %}
+        {% endfor %}
+        &middot; {{ n.event_time }}
+      </div>
+      {% if n.suppression_summary %}
+      <div class="suppression">{{ n.suppression_summary }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</body>
+</html>

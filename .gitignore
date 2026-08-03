@@ -1,0 +1,15 @@
+PLAN.md
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.venv/
+
+# Runtime artifacts
+var/
+DEVELOPMENT_LOG.md
+/docs
