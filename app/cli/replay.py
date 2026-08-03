@@ -1,3 +1,25 @@
+"""
+Event Replay CLI & Simulator.
+
+This CLI tool is both the primary demonstration runner and the system's integration 
+test harness. It replays a JSONL event stream through the ingestion pipeline and 
+notification engine under exact event-time clock control.
+
+Crucial Mechanics:
+- Event-Time Clock: Uses a `ManualClock` injected into all dependencies. Time is driven 
+  entirely by events, never system wall-clock time.
+- Clock Interpolation (R11): For each event at time T, the clock is stepped forward in 
+  `tick_interval_sec` increments from its current time up to T, calling `on_tick` at each 
+  step, before finally setting the clock to T and ingesting the event. This prevents 
+  skipping evaluation thresholds (e.g., agent a_11's 70-minute silent call) that have no 
+  events during the breach window.
+- Replay Watermark (Idempotency): Persists the clock's maximum progress in SQLite. A subsequent 
+  replay run will start its clock from this watermark, preventing double-counting of 
+  suppressed evaluations or re-triggering reminders.
+- Replay Speed: Cosmetic sleeping between steps. A speed factor of 0 runs the simulation 
+  as fast as possible.
+"""
+
 import argparse
 import json
 import time

@@ -1,3 +1,27 @@
+"""
+Rule Evaluator.
+
+This module houses the pure, side-effect-free logic to evaluate rule conditions against 
+projected subject state facts at a given time.
+
+Process Flow:
+1. Fact Extraction: Iterates through each condition in a rule, fetching the fact value
+   from the current subject state via the dynamic registry extractor.
+2. Operand Resolution: Resolves the condition's right-hand operand (either a literal value
+   or a dynamic reference to another fact on the same subject).
+3. Operator Application: Executes comparison operators (e.g., `gt`, `gte`, `in_`) on
+   the left-hand and right-hand operands.
+4. Outcome Aggregation: Checks if all conditions are met. Captures missing facts and
+   builds a snapshot of all referenced facts for template rendering.
+
+Design & Limitations:
+- Conjunction Conformance: All conditions are ANDed together (a flat list of conditions).
+- Unknown Handling (Missing Facts): If a required fact is uncomputable (resulting in the `MISSING` sentinel),
+  the condition evaluates to False. Any missing facts are tracked and reported in `missing_facts`
+  so the state machine can freeze rather than resolve (resolve hardening). Full three-valued logic
+  using Kleene semantics is slated for a future phase (Phase 10).
+"""
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any

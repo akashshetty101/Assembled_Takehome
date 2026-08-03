@@ -1,3 +1,18 @@
+"""
+Due Time Calculations.
+
+This module houses the pure, mathematical calculations for determining the next evaluation 
+due time of a rule-subject-episode combination. It is shared by both `ScanScheduler` and 
+`HeapScheduler`, serving as the single source of truth for "time-sensitive" conditions.
+
+Due-time Logic:
+- Pending Episodes: Due exactly when the continuous match duration threshold (`for_duration_sec`) is met.
+- Open Episodes (Cooldown): Due when the cooldown period (`cooldown_sec`) is elapsed, allowing reminder alerts.
+- Idle Subjects (No active episode): Due when state-duration facts (like call duration or adherence violation duration) 
+  will cross their literal thresholds in the future.
+- Queue Snapshot Age: Handles queue rule sensitivity to snapshot arrival delays (R14).
+"""
+
 from datetime import datetime, timedelta
 from typing import Any
 

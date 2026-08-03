@@ -1,3 +1,29 @@
+"""
+Notification Engine Core.
+
+This module acts as the orchestrator of the intraday notification system. It links 
+state projections, rule configurations, evaluation logic, the episode state machine, 
+and delivery dispatchers.
+
+Core Operations:
+- `evaluate_rule`: The single evaluation node. It reloads the subject state fresh from the DB,
+  evaluates the rules, feeds findings into the episode state machine, updates the episode table,
+  resolves the target recipient, renders the template, and dispatches notifications.
+- Event Trigger (`on_event`): Triggered immediately upon new event ingestion. Matches rules
+  by subject type and selector.
+- Scheduled Trigger (`on_tick`): Triggered periodically by the scheduler (clock tick) to
+  re-evaluate time-sensitive states (e.g., duration elapsed without new events).
+
+Design Decisions:
+1. Trigger-Agnosticism: Evaluation behaves identically regardless of how it was triggered.
+   The `trigger` parameter is purely for metrics and is immediately discarded during logic execution.
+2. Transactional Integrity: Episode changes and generated notifications are committed within a single
+   atomic transaction. External channel delivery is executed only after successful persistence (persist-then-send)
+   to ensure reliability and exact-once semantics (gated on unique constraints).
+3. Dependency Injection: Uses an explicit `EngineDeps` container to prevent global state leaks
+   and make testing with in-memory DBs trivial.
+"""
+
 import json
 import sqlite3
 import uuid
@@ -108,13 +134,18 @@ def evaluate_rule(
         # per-increment transaction discipline (code-review HIGH fix).
         with transaction(deps.conn):
             deps.counters.increment("evaluations_event" if trigger == "event" else "evaluations_due")
+
+    # Trigger-agnostic assertion: we delete trigger immediately to prevent any down-stream
+    # conditional or routing logic from depending on how the evaluation was triggered.
     del trigger  # logging/stats label only; not read anywhere in this function's logic
 
+    # Reload rule fresh from storage to operate on the absolute latest config/status.
     rule_record = deps.rules_repo.get(rule_id)
     if rule_record is None or not rule_record.enabled:
         return []
     rule = _rule_from_record(rule_record, deps.registry)
 
+    # Fetch the subject's latest state row from the database repository.
     if rule.subject_type == SubjectType.QUEUE:
         state = deps.queue_repo.get(subject_id)
     else:

@@ -2,13 +2,24 @@
   {
     "name": "billing queue > 20 tickets waiting",
     "subject_type": "queue",
-    "selector": {"kind": "ids", "ids": ["billing"]},
+    "selector": {
+      "kind": "ids",
+      "ids": [
+        "billing"
+      ]
+    },
     "conditions": [
-      {"fact": "tickets_waiting", "op": "gt", "value": 20}
+      {
+        "fact": "tickets_waiting",
+        "op": "gt",
+        "value": 20
+      }
     ],
     "for_duration_sec": 300,
     "cooldown_sec": 0,
-    "recipient": {"kind": "author"},
+    "recipient": {
+      "kind": "author"
+    },
     "template": "{subject_id} has {tickets_waiting} tickets waiting",
     "enabled": true,
     "created_by": "lead_sam"
@@ -16,13 +27,23 @@
   {
     "name": "queue breaching SLA",
     "subject_type": "queue",
-    "selector": {"kind": "all"},
+    "selector": {
+      "kind": "all"
+    },
     "conditions": [
-      {"fact": "longest_wait_sec", "op": "gt", "value": {"fact_ref": "sla_target_sec"}}
+      {
+        "fact": "longest_wait_sec",
+        "op": "gt",
+        "value": {
+          "fact_ref": "sla_target_sec"
+        }
+      }
     ],
     "for_duration_sec": 300,
     "cooldown_sec": 0,
-    "recipient": {"kind": "author"},
+    "recipient": {
+      "kind": "author"
+    },
     "template": "{subject_id} is breaching SLA: {longest_wait_sec} > {sla_target_sec}",
     "enabled": true,
     "created_by": "lead_sam"
@@ -30,14 +51,26 @@
   {
     "name": "agent on a single call > 45 min",
     "subject_type": "agent",
-    "selector": {"kind": "all"},
+    "selector": {
+      "kind": "all"
+    },
     "conditions": [
-      {"fact": "current_state", "op": "eq", "value": "on_call"},
-      {"fact": "current_state_duration_sec", "op": "gt", "value": 2700}
+      {
+        "fact": "current_state",
+        "op": "eq",
+        "value": "on_call"
+      },
+      {
+        "fact": "current_state_duration_sec",
+        "op": "gt",
+        "value": 2700
+      }
     ],
     "for_duration_sec": 0,
     "cooldown_sec": 0,
-    "recipient": {"kind": "author"},
+    "recipient": {
+      "kind": "author"
+    },
     "template": "{subject_id} has been on a single call for {current_state_duration_sec}s",
     "enabled": true,
     "created_by": "lead_sam"
@@ -45,14 +78,26 @@
   {
     "name": "out of adherence > 10 min",
     "subject_type": "agent",
-    "selector": {"kind": "all"},
+    "selector": {
+      "kind": "all"
+    },
     "conditions": [
-      {"fact": "in_adherence_violation", "op": "eq", "value": true},
-      {"fact": "adherence_violation_duration_sec", "op": "gt", "value": 600}
+      {
+        "fact": "in_adherence_violation",
+        "op": "eq",
+        "value": true
+      },
+      {
+        "fact": "adherence_violation_duration_sec",
+        "op": "gt",
+        "value": 600
+      }
     ],
     "for_duration_sec": 0,
     "cooldown_sec": 600,
-    "recipient": {"kind": "subject_agent"},
+    "recipient": {
+      "kind": "subject_agent"
+    },
     "template": "{subject_id} has been out of adherence for {adherence_violation_duration_sec}s",
     "enabled": true,
     "created_by": "lead_sam"
@@ -60,13 +105,22 @@
   {
     "name": "queue severely backed up",
     "subject_type": "queue",
-    "selector": {"kind": "all"},
+    "selector": {
+      "kind": "all"
+    },
     "conditions": [
-      {"fact": "tickets_waiting", "op": "gt", "value": 15}
+      {
+        "fact": "tickets_waiting",
+        "op": "gt",
+        "value": 15
+      }
     ],
     "for_duration_sec": 0,
     "cooldown_sec": 1800,
-    "recipient": {"kind": "channel", "target": "#ops-alerts"},
+    "recipient": {
+      "kind": "channel",
+      "target": "#ops-alerts"
+    },
     "template": "{subject_id} has {tickets_waiting} tickets waiting",
     "enabled": true,
     "created_by": "lead_sam"
@@ -74,14 +128,26 @@
   {
     "name": "queue understaffed with tickets waiting",
     "subject_type": "queue",
-    "selector": {"kind": "all"},
+    "selector": {
+      "kind": "all"
+    },
     "conditions": [
-      {"fact": "agents_available", "op": "eq", "value": 0},
-      {"fact": "tickets_waiting", "op": "gt", "value": 0}
+      {
+        "fact": "agents_available",
+        "op": "eq",
+        "value": 0
+      },
+      {
+        "fact": "tickets_waiting",
+        "op": "gt",
+        "value": 0
+      }
     ],
     "for_duration_sec": 0,
     "cooldown_sec": 900,
-    "recipient": {"kind": "author"},
+    "recipient": {
+      "kind": "author"
+    },
     "template": "{subject_id} has 0 agents available with {tickets_waiting} tickets waiting",
     "enabled": true,
     "created_by": "lead_sam"
@@ -89,14 +155,26 @@
   {
     "name": "queue at risk of SLA breach",
     "subject_type": "queue",
-    "selector": {"kind": "all"},
+    "selector": {
+      "kind": "all"
+    },
     "conditions": [
-      {"fact": "sla_risk_pct", "op": "gte", "value": 0.8},
-      {"fact": "sla_risk_pct", "op": "lt", "value": 1.0}
+      {
+        "fact": "sla_risk_pct",
+        "op": "gte",
+        "value": 0.8
+      },
+      {
+        "fact": "sla_risk_pct",
+        "op": "lt",
+        "value": 1.0
+      }
     ],
     "for_duration_sec": 0,
     "cooldown_sec": 600,
-    "recipient": {"kind": "author"},
+    "recipient": {
+      "kind": "author"
+    },
     "template": "{subject_id} is at risk of breaching SLA ({sla_risk_pct} of target)",
     "enabled": true,
     "created_by": "lead_sam"

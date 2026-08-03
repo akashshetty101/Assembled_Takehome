@@ -1,3 +1,22 @@
+"""
+Event Ingestion Pipeline.
+
+This module coordinates the processing of raw, incoming contact center events
+(queue snapshots, agent state transitions, adherence checks). It sits at the entry point 
+of the system and projects event data onto a compact database schema.
+
+Key Pipeline Stages (Enforced Order):
+1. Parse & Validate: Ensures schema conformances via Pydantic event models.
+2. Deduplicate: Rejects redundant events by ID. Runs before watermark checking (R3) 
+   so late duplicate events are counted as duplicates, not late drops.
+3. Watermark Validation: Discards late events to prevent state regression (R5), 
+   while logging them to SQLite for debugging/auditing.
+4. Transactional Projection: Commits state changes to Agent/Queue storage and updates 
+   watermarks within a single transaction to maintain atomic consistency.
+5. Change Callbacks: Invokes engine evaluation hooks on successful ingest, using a 
+   decoupled callback to keep ingest free from engine dependency (R1).
+"""
+
 import json
 import logging
 import sqlite3
