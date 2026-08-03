@@ -66,6 +66,7 @@ class EpisodeRecord:
     notify_seq: int
     evaluations_suppressed: int
     stale: bool
+    stale_since: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

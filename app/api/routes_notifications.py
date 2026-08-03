@@ -8,7 +8,7 @@ from app.routing.renderer import render_suppression_summary
 router = APIRouter()
 
 
-def _notification_to_dict(n, suppression_summary: str | None = None) -> dict:
+def _notification_to_dict(n, suppression_summary: str | None = None, stale: bool = False) -> dict:
     return {
         "id": n.id, "episode_id": n.episode_id, "rule_id": n.rule_id, "subject_id": n.subject_id,
         "transition": n.transition, "occurrence_seq": n.occurrence_seq,
@@ -16,6 +16,7 @@ def _notification_to_dict(n, suppression_summary: str | None = None) -> dict:
         "body": n.body, "facts_snapshot": json.loads(n.facts_snapshot_json),
         "event_time": n.event_time, "created_at": n.created_at,
         "suppression_summary": suppression_summary,
+        "stale": stale,
     }
 
 
@@ -37,10 +38,14 @@ def _to_dict_with_suppression(app_state, n, as_of) -> dict:
     """PLAN.md Phase 6 item 3: per-episode suppression summary, looked up
     once per notification -- the episode row already carries
     evaluations_suppressed/last_notified_at, no separate aggregation
-    needed."""
+    needed. Phase 9: the same lookup carries `stale` -- an episode frozen
+    awaiting data (a driving fact went MISSING) renders "stale — awaiting
+    data" instead of a false RESOLVED, since no such notification is ever
+    emitted for it."""
     episode = app_state.engine_deps.episodes_repo.get(n.episode_id)
     summary = render_suppression_summary(episode, as_of) if episode else None
-    return _notification_to_dict(n, suppression_summary=summary)
+    stale = episode.stale if episode else False
+    return _notification_to_dict(n, suppression_summary=summary, stale=stale)
 
 
 @router.get("/notifications", response_class=HTMLResponse)

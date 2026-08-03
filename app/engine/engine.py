@@ -72,7 +72,7 @@ def _episode_from_record(record: EpisodeRecord) -> Episode:
         closed_at=_parse_ts(record.closed_at),
         last_notified_at=_parse_ts(record.last_notified_at),
         notify_seq=record.notify_seq, evaluations_suppressed=record.evaluations_suppressed,
-        stale=record.stale,
+        stale=record.stale, stale_since=_parse_ts(record.stale_since),
     )
 
 
@@ -86,6 +86,7 @@ def _episode_to_record(episode: Episode) -> EpisodeRecord:
         last_notified_at=episode.last_notified_at.isoformat() if episode.last_notified_at else None,
         notify_seq=episode.notify_seq, evaluations_suppressed=episode.evaluations_suppressed,
         stale=episode.stale,
+        stale_since=episode.stale_since.isoformat() if episode.stale_since else None,
     )
 
 
@@ -129,6 +130,7 @@ def evaluate_rule(
     new_episode, transitions = advance(
         prior_episode, result.matched, now, rule,
         rule_id=rule_id, subject_id=subject_id, new_id=new_id,
+        missing_facts=result.missing_facts,
     )
 
     # Episode state change AND every notification it produces are one

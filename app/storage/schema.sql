@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS episodes (
     last_notified_at TEXT,
     notify_seq INTEGER NOT NULL DEFAULT 0,
     evaluations_suppressed INTEGER NOT NULL DEFAULT 0,
-    stale INTEGER NOT NULL DEFAULT 0
+    stale INTEGER NOT NULL DEFAULT 0,
+    stale_since TEXT
 );
 
 -- At most one pending/open episode per (rule, subject) at a time. This is the

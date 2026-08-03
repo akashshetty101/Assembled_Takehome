@@ -28,9 +28,11 @@ class SqliteEpisodesRepository:
         self._conn.execute(
             """
             INSERT INTO episodes (id, rule_id, subject_id, state, first_true_at, opened_at,
-                                   closed_at, last_notified_at, notify_seq, evaluations_suppressed, stale)
+                                   closed_at, last_notified_at, notify_seq, evaluations_suppressed, stale,
+                                   stale_since)
             VALUES (:id, :rule_id, :subject_id, :state, :first_true_at, :opened_at,
-                    :closed_at, :last_notified_at, :notify_seq, :evaluations_suppressed, :stale)
+                    :closed_at, :last_notified_at, :notify_seq, :evaluations_suppressed, :stale,
+                    :stale_since)
             """,
             data,
         )
@@ -42,7 +44,7 @@ class SqliteEpisodesRepository:
             """
             UPDATE episodes SET state=:state, first_true_at=:first_true_at, opened_at=:opened_at,
                 closed_at=:closed_at, last_notified_at=:last_notified_at, notify_seq=:notify_seq,
-                evaluations_suppressed=:evaluations_suppressed, stale=:stale
+                evaluations_suppressed=:evaluations_suppressed, stale=:stale, stale_since=:stale_since
             WHERE id=:id
             """,
             data,

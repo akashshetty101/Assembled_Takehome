@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from app.domain.episodes import Episode, EpisodeState, Transition
-from app.domain.rules import Rule
+from app.domain.rules import FactRef, Rule
 
 
 def advance(
@@ -13,6 +13,7 @@ def advance(
     rule_id: str,
     subject_id: str,
     new_id: str,
+    missing_facts: list[str] | None = None,
 ) -> tuple[Episode, list[Transition]]:
     """Pure. for_duration applies to the CONJUNCTION, not per-condition:
     this function sees one already-ANDed boolean (matched). Any condition
@@ -25,6 +26,22 @@ def advance(
     episode. `new_id` is a caller-supplied fresh id (e.g. uuid4()), used
     only when a NEW episode must be created (clear/None -> pending/open);
     id generation is impure and stays outside this function.
+
+    `missing_facts` (Phase 9, resolve hardening): only consulted on the
+    open -> clear edge. If a fact the rule's own conditions depend on is
+    MISSING, `matched=False` is not evidence of recovery -- it's an
+    absence of evidence. Resolving there would emit a RESOLVED
+    notification asserting "recovered" with nothing behind it. Everywhere
+    else (opening, pending, reminders) unknown-as-false is left exactly as
+    it was: this is the scoped, cheap fix for the dangerous half only
+    (Phase 10 -- full three-valued logic -- is the general fix).
+
+    Code-review CRITICAL fix: "facts the rule's conditions depend on" is
+    not just `condition.fact` -- a FactRef condition (e.g. `longest_wait_sec
+    > {fact_ref: sla_target_sec}`, the real seeded SLA rule) also depends on
+    its fact_ref TARGET; missing that would let the exact bug back in
+    through the fact_ref door. Mirrors domain/rules.py's own
+    `declared_facts` construction.
     """
     if episode is not None:
         if episode.rule_id != rule_id:
@@ -81,12 +98,27 @@ def advance(
     # OPEN
     assert episode is not None
     if not matched:
-        closed = episode.model_copy(update={"state": EpisodeState.CLEAR, "closed_at": now})
+        driving_facts = {c.fact for c in rule.conditions} | {
+            c.value.fact_ref for c in rule.conditions if isinstance(c.value, FactRef)
+        }
+        if missing_facts and driving_facts & set(missing_facts):
+            stale_since = episode.stale_since if episode.stale else now
+            frozen = episode.model_copy(update={"stale": True, "stale_since": stale_since})
+            return frozen, []
+        closed = episode.model_copy(
+            update={"state": EpisodeState.CLEAR, "closed_at": now, "stale": False, "stale_since": None}
+        )
         return closed, [Transition.RESOLVED]
 
+    # matched=True is itself real, data-backed evidence -- thaws a prior
+    # freeze on both outcomes below (code-review HIGH fix), not just on
+    # eventual resolve.
     if rule.cooldown_sec == 0:
         suppressed = episode.model_copy(
-            update={"evaluations_suppressed": episode.evaluations_suppressed + 1}
+            update={
+                "evaluations_suppressed": episode.evaluations_suppressed + 1,
+                "stale": False, "stale_since": None,
+            }
         )
         return suppressed, []
 
@@ -94,11 +126,17 @@ def advance(
     elapsed_since_notify = (now - episode.last_notified_at).total_seconds()
     if elapsed_since_notify < rule.cooldown_sec:
         suppressed = episode.model_copy(
-            update={"evaluations_suppressed": episode.evaluations_suppressed + 1}
+            update={
+                "evaluations_suppressed": episode.evaluations_suppressed + 1,
+                "stale": False, "stale_since": None,
+            }
         )
         return suppressed, []
 
     reminder = episode.model_copy(
-        update={"notify_seq": episode.notify_seq + 1, "last_notified_at": now}
+        update={
+            "notify_seq": episode.notify_seq + 1, "last_notified_at": now,
+            "stale": False, "stale_since": None,
+        }
     )
     return reminder, [Transition.REMINDER]

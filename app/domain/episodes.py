@@ -30,6 +30,7 @@ class Episode(BaseModel):
     notify_seq: int = 0
     evaluations_suppressed: int = 0
     stale: bool = False
+    stale_since: datetime | None = None
 
     @model_validator(mode="after")
     def _validate_state_consistency(self) -> "Episode":
@@ -40,4 +41,6 @@ class Episode(BaseModel):
             raise ValueError("state='pending' requires first_true_at to be set")
         if self.state == EpisodeState.OPEN and (self.opened_at is None or self.last_notified_at is None):
             raise ValueError("state='open' requires opened_at and last_notified_at to be set")
+        if self.stale and (self.state != EpisodeState.OPEN or self.stale_since is None):
+            raise ValueError("stale=True requires state='open' and stale_since to be set")
         return self

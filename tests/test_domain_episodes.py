@@ -21,6 +21,7 @@ def test_episode_defaults():
     assert ep.notify_seq == 0
     assert ep.evaluations_suppressed == 0
     assert ep.stale is False
+    assert ep.stale_since is None
 
 
 def test_episode_is_frozen():
@@ -44,6 +45,31 @@ def test_open_episode_requires_opened_at_and_last_notified_at():
             id="e1", rule_id="r1", subject_id="billing", state=EpisodeState.OPEN,
             opened_at=None, last_notified_at=None,
         )
+
+
+def test_stale_requires_open_state_and_stale_since():
+    """Phase 9 invariant: stale=True is only meaningful for an OPEN episode
+    that's frozen awaiting data -- not a real, checkable-at-construction
+    assert buried in machine.py."""
+    from datetime import datetime, timezone
+
+    ts = datetime(2026, 5, 26, 9, 0, tzinfo=timezone.utc)
+    with pytest.raises(ValidationError, match="stale"):
+        Episode(
+            id="e1", rule_id="r1", subject_id="billing", state=EpisodeState.OPEN,
+            opened_at=ts, last_notified_at=ts, stale=True, stale_since=None,
+        )
+    with pytest.raises(ValidationError, match="stale"):
+        Episode(
+            id="e1", rule_id="r1", subject_id="billing", state=EpisodeState.CLEAR,
+            closed_at=ts, stale=True, stale_since=ts,
+        )
+    # Valid: stale=True with state=open and stale_since set.
+    ep = Episode(
+        id="e1", rule_id="r1", subject_id="billing", state=EpisodeState.OPEN,
+        opened_at=ts, last_notified_at=ts, stale=True, stale_since=ts,
+    )
+    assert ep.stale_since == ts
 
 
 def test_closed_clear_episode_may_retain_historical_timestamps():

@@ -239,6 +239,131 @@ def test_advance_rejects_mismatched_rule_id_or_subject_id():
         advance(ep, True, T0, rule, rule_id="r1", subject_id="tier_2_WRONG", new_id="unused")
 
 
+# -- Phase 9: resolve hardening (stale freeze on missing driving fact) ------
+
+def test_open_missing_driving_fact_freezes_as_stale_instead_of_resolving():
+    """The dangerous half of unknown-as-false (PLAN.md Phase 9): a fact the
+    rule's own conditions depend on goes MISSING while OPEN. Resolving here
+    would emit a RESOLVED notification asserting recovery with no evidence
+    (the real a_19 bug). Instead: refuse to resolve, freeze as stale."""
+    rule = _rule()  # conditions: [{"fact": "tickets_waiting", ...}]
+    ep = _ep(EpisodeState.OPEN, opened_at=T0, last_notified_at=T0)
+    new_ep, transitions = advance(
+        ep, False, _t(100), rule, rule_id="r1", subject_id="billing", new_id="unused",
+        missing_facts=["tickets_waiting"],
+    )
+    assert transitions == []
+    assert new_ep.state == EpisodeState.OPEN
+    assert new_ep.stale is True
+    assert new_ep.stale_since == _t(100)
+
+
+def test_stale_episode_then_real_false_resolves_and_clears_stale():
+    """Once frozen as stale, a genuine False (the fact is present and the
+    condition no longer holds) must still resolve normally and clear the
+    stale flag -- freezing is not a permanent lock."""
+    rule = _rule()
+    ep = _ep(EpisodeState.OPEN, opened_at=T0, last_notified_at=T0)
+    stale_ep, trans1 = advance(
+        ep, False, _t(100), rule, rule_id="r1", subject_id="billing", new_id="unused",
+        missing_facts=["tickets_waiting"],
+    )
+    assert trans1 == []
+    assert stale_ep.stale is True
+
+    resolved_ep, trans2 = advance(
+        stale_ep, False, _t(200), rule, rule_id="r1", subject_id="billing", new_id="unused",
+        missing_facts=[],
+    )
+    assert trans2 == [Transition.RESOLVED]
+    assert resolved_ep.state == EpisodeState.CLEAR
+    assert resolved_ep.stale is False
+    assert resolved_ep.stale_since is None
+
+
+def test_missing_fact_not_a_rule_condition_does_not_freeze():
+    """Only facts the rule's OWN conditions depend on count. A missing fact
+    unrelated to this rule (e.g. a fact_ref target from a different
+    condition set, or noise from another rule) must not block resolution."""
+    rule = _rule()  # only condition is on "tickets_waiting"
+    ep = _ep(EpisodeState.OPEN, opened_at=T0, last_notified_at=T0)
+    new_ep, transitions = advance(
+        ep, False, _t(100), rule, rule_id="r1", subject_id="billing", new_id="unused",
+        missing_facts=["longest_wait_sec"],
+    )
+    assert transitions == [Transition.RESOLVED]
+    assert new_ep.state == EpisodeState.CLEAR
+    assert new_ep.stale is False
+
+
+def test_open_missing_fact_ref_target_freezes_as_stale():
+    """Code-review CRITICAL fix: a condition's own `fact` is not the only
+    thing it depends on -- a FactRef condition (e.g. `longest_wait_sec >
+    {fact_ref: sla_target_sec}`, the real seeded SLA rule) also depends on
+    its fact_ref TARGET. If only condition.fact were checked, a missing
+    fact_ref target would resolve normally -- reproducing the exact
+    dangerous-half bug Phase 9 exists to close, just through the fact_ref
+    door instead of the plain-fact door."""
+    from app.domain.rules import FactRef
+
+    rule = _rule(
+        conditions=[{"fact": "longest_wait_sec", "op": "gt", "value": {"fact_ref": "sla_target_sec"}}],
+    )
+    assert isinstance(rule.conditions[0].value, FactRef)
+    ep = _ep(EpisodeState.OPEN, opened_at=T0, last_notified_at=T0)
+    new_ep, transitions = advance(
+        ep, False, _t(100), rule, rule_id="r1", subject_id="billing", new_id="unused",
+        missing_facts=["sla_target_sec"],
+    )
+    assert transitions == []
+    assert new_ep.state == EpisodeState.OPEN
+    assert new_ep.stale is True
+    assert new_ep.stale_since == _t(100)
+
+
+def test_stale_episode_thaws_on_genuine_reminder():
+    """Code-review HIGH fix: once fresh data confirms the condition still
+    genuinely matches (a real, data-backed REMINDER), the episode is no
+    longer 'awaiting data' -- stale must clear, not persist until an
+    eventual resolve."""
+    rule = _rule(cooldown_sec=600)
+    ep = _ep(EpisodeState.OPEN, opened_at=T0, last_notified_at=T0, stale=True, stale_since=_t(50))
+    new_ep, transitions = advance(
+        ep, True, _t(600), rule, rule_id="r1", subject_id="billing", new_id="unused",
+    )
+    assert transitions == [Transition.REMINDER]
+    assert new_ep.stale is False
+    assert new_ep.stale_since is None
+
+
+def test_stale_episode_thaws_on_genuine_cooldown_suppressed_match():
+    """Same as above, but the matched=True evaluation lands within
+    cooldown (suppressed, not a REMINDER) -- still real data, still must
+    thaw."""
+    rule = _rule(cooldown_sec=600)
+    ep = _ep(EpisodeState.OPEN, opened_at=T0, last_notified_at=T0, stale=True, stale_since=_t(50))
+    new_ep, transitions = advance(
+        ep, True, _t(300), rule, rule_id="r1", subject_id="billing", new_id="unused",
+    )
+    assert transitions == []
+    assert new_ep.stale is False
+    assert new_ep.stale_since is None
+
+
+def test_opening_path_unchanged_by_missing_facts_missing_still_means_dont_open():
+    """The asymmetry Phase 9 exists to fix is scoped to resolving an
+    already-OPEN episode. The opening path (clear/pending -> open) is
+    untouched: a missing driving fact must still fail safe (no open),
+    exactly as before Phase 9."""
+    rule = _rule(for_duration_sec=0)
+    new_ep, transitions = advance(
+        None, False, T0, rule, rule_id="r1", subject_id="billing", new_id="new1",
+        missing_facts=["tickets_waiting"],
+    )
+    assert new_ep.state == EpisodeState.CLEAR
+    assert transitions == []
+
+
 def test_reopen_after_close_gets_a_new_id_old_stays_closed():
     """open -> clear -> true again -> a NEW episode with a new id; the old
     (now-closed) episode's identity must not be reused -- the partial

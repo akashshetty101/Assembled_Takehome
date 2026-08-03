@@ -13,6 +13,7 @@
     .notification .body { margin: 0.25rem 0; }
     .notification .why { color: #666; font-size: 0.85rem; }
     .notification .suppression { color: #999; font-size: 0.8rem; font-style: italic; margin-top: 0.15rem; }
+    .notification .stale { color: #b91c1c; font-size: 0.8rem; font-style: italic; margin-top: 0.15rem; }
     .transition-opened { color: #b45309; }
     .transition-reminder { color: #1d4ed8; }
     .transition-resolved { color: #15803d; }
@@ -46,6 +47,9 @@
       </div>
       {% if n.suppression_summary %}
       <div class="suppression">{{ n.suppression_summary }}</div>
+      {% endif %}
+      {% if n.stale %}
+      <div class="stale">stale — awaiting data</div>
       {% endif %}
     </div>
     {% endfor %}
