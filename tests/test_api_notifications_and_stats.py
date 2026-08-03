@@ -105,6 +105,64 @@ def test_suppression_summary_uses_latest_known_event_time_not_wall_clock(tmp_pat
     assert "over 24 min" in summary  # 09:36 -> billing's last_event_ts 10:00, not years
 
 
+def test_suppression_summary_only_shown_on_latest_notification_in_episode(tmp_path):
+    """Bug found reviewing the PDF export: the episode row's suppression
+    state is live/mutable, so attaching it to every historical notification
+    of that episode made an OPENED notification (event_time 09:36) display
+    a REMINDER's later 'notified once at 10:00' timestamp -- a time after
+    the OPENED notification itself. Only the most recent notification for
+    an episode should carry the live summary; earlier ones must show None
+    rather than a copy of a later notification's state."""
+    import dataclasses
+
+    client, state = _client(tmp_path)
+    _seed_notification(state)  # ep1's 'opened' notification n1 @ 09:36
+
+    state.engine_deps.notifications_repo.insert_if_absent(NotificationRecord(
+        id="n2", episode_id="ep1", rule_id="r1", subject_id="billing", transition="reminder",
+        occurrence_seq=1, recipient_kind="author", recipient_target="lead_sam",
+        body="billing has 25 tickets waiting", facts_snapshot_json='{"tickets_waiting": 25}',
+        event_time="2026-05-26T10:00:00Z", created_at="2026-05-26T10:00:00Z",
+    ))
+    episode = state.engine_deps.episodes_repo.get("ep1")
+    state.engine_deps.episodes_repo.update(dataclasses.replace(
+        episode, last_notified_at="2026-05-26T10:00:00Z", evaluations_suppressed=3,
+    ))
+
+    body = client.get("/api/notifications").json()
+    by_id = {n["id"]: n for n in body}
+    assert by_id["n1"]["suppression_summary"] is None
+    assert by_id["n2"]["suppression_summary"] is not None
+    assert "notified once at 2026-05-26T10:00:00Z" in by_id["n2"]["suppression_summary"]
+
+
+def test_stale_only_shown_on_latest_notification_in_episode(tmp_path):
+    """Same bug class as the suppression-summary fix above, for the `stale`
+    flag: episode.stale is live/current state, so stamping it onto every
+    historical notification of the episode made an OPENED/REMINDER sent
+    BEFORE the episode ever went stale (a driving fact went MISSING later)
+    retroactively render 'stale — awaiting data', which never described
+    those notifications at the time they were sent."""
+    import dataclasses
+
+    client, state = _client(tmp_path)
+    _seed_notification(state)  # ep1's 'opened' notification n1, episode not stale
+
+    state.engine_deps.notifications_repo.insert_if_absent(NotificationRecord(
+        id="n2", episode_id="ep1", rule_id="r1", subject_id="billing", transition="reminder",
+        occurrence_seq=1, recipient_kind="author", recipient_target="lead_sam",
+        body="billing has 25 tickets waiting", facts_snapshot_json='{"tickets_waiting": 25}',
+        event_time="2026-05-26T10:00:00Z", created_at="2026-05-26T10:00:00Z",
+    ))
+    episode = state.engine_deps.episodes_repo.get("ep1")
+    state.engine_deps.episodes_repo.update(dataclasses.replace(episode, stale=True))
+
+    body = client.get("/api/notifications").json()
+    by_id = {n["id"]: n for n in body}
+    assert by_id["n1"]["stale"] is False
+    assert by_id["n2"]["stale"] is True
+
+
 def test_api_notifications_json_and_filters(tmp_path):
     client, state = _client(tmp_path)
     _seed_notification(state)
