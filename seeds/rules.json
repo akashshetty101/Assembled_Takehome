@@ -70,5 +70,35 @@
     "template": "{subject_id} has {tickets_waiting} tickets waiting",
     "enabled": true,
     "created_by": "lead_sam"
+  },
+  {
+    "name": "queue understaffed with tickets waiting",
+    "subject_type": "queue",
+    "selector": {"kind": "all"},
+    "conditions": [
+      {"fact": "agents_available", "op": "eq", "value": 0},
+      {"fact": "tickets_waiting", "op": "gt", "value": 0}
+    ],
+    "for_duration_sec": 0,
+    "cooldown_sec": 900,
+    "recipient": {"kind": "author"},
+    "template": "{subject_id} has 0 agents available with {tickets_waiting} tickets waiting",
+    "enabled": true,
+    "created_by": "lead_sam"
+  },
+  {
+    "name": "queue at risk of SLA breach",
+    "subject_type": "queue",
+    "selector": {"kind": "all"},
+    "conditions": [
+      {"fact": "sla_risk_pct", "op": "gte", "value": 0.8},
+      {"fact": "sla_risk_pct", "op": "lt", "value": 1.0}
+    ],
+    "for_duration_sec": 0,
+    "cooldown_sec": 600,
+    "recipient": {"kind": "author"},
+    "template": "{subject_id} is at risk of breaching SLA ({sla_risk_pct} of target)",
+    "enabled": true,
+    "created_by": "lead_sam"
   }
 ]

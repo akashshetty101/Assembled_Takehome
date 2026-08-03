@@ -25,11 +25,12 @@ def _registry_dict():
     return {spec.name: spec for spec in QUEUE_FACTS}
 
 
-def test_exactly_eight_queue_facts_registered():
-    assert len(QUEUE_FACTS) == 8
+def test_exactly_nine_queue_facts_registered():
+    assert len(QUEUE_FACTS) == 9
     assert {spec.name for spec in QUEUE_FACTS} == {
         "tickets_waiting", "longest_wait_sec", "sla_target_sec", "agents_available",
         "agents_on_call", "volume_last_15m", "volume_forecast_next_15m", "snapshot_age_sec",
+        "sla_risk_pct",
     }
 
 
@@ -76,9 +77,30 @@ def test_snapshot_age_sec_is_zero_at_the_instant_of_the_snapshot():
 @pytest.mark.parametrize(
     "fact_name",
     ["tickets_waiting", "longest_wait_sec", "sla_target_sec", "agents_available",
-     "agents_on_call", "volume_last_15m"],
+     "agents_on_call", "volume_last_15m", "sla_risk_pct"],
 )
 def test_null_field_extracts_as_missing_for_every_nullable_fact(fact_name):
     state = QueueState(queue_id="billing", last_event_ts=NOW)  # all optional fields None
     spec = _registry_dict()[fact_name]
+    assert spec.extractor(state, NOW) is MISSING
+
+
+def test_sla_risk_pct_is_longest_wait_over_sla_target():
+    spec = _registry_dict()["sla_risk_pct"]
+    assert spec.extractor(FULLY_POPULATED, NOW) == pytest.approx(200 / 120)
+
+
+def test_sla_risk_pct_missing_when_sla_target_is_zero():
+    """Division-by-zero guard: 0 is falsy but distinct from None -- both
+    must yield MISSING, never a ZeroDivisionError or a guessed value."""
+    state = QueueState(
+        queue_id="billing", longest_wait_sec=90, sla_target_sec=0, last_event_ts=NOW,
+    )
+    spec = _registry_dict()["sla_risk_pct"]
+    assert spec.extractor(state, NOW) is MISSING
+
+
+def test_sla_risk_pct_missing_when_longest_wait_is_none_but_sla_target_set():
+    state = QueueState(queue_id="billing", sla_target_sec=120, last_event_ts=NOW)
+    spec = _registry_dict()["sla_risk_pct"]
     assert spec.extractor(state, NOW) is MISSING

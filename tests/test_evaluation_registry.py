@@ -2,9 +2,9 @@ from app.domain.subjects import SubjectType
 from app.evaluation.registry import build_registry
 
 
-def test_build_registry_has_all_eight_queue_facts():
+def test_build_registry_has_all_nine_queue_facts():
     registry = build_registry()
-    assert len(registry.names_for(SubjectType.QUEUE)) == 8
+    assert len(registry.names_for(SubjectType.QUEUE)) == 9
 
 
 def test_build_registry_has_all_four_agent_facts():

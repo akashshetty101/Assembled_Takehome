@@ -15,7 +15,7 @@ def test_seed_loads_through_the_same_validation_as_the_api(tmp_path):
     migrate(conn, settings)
     count = seed_rules(conn, settings)
     conn.close()
-    assert count == 5
+    assert count == 7
 
 
 def test_seed_persists_visibly_after_reconnect(tmp_path):
@@ -32,7 +32,7 @@ def test_seed_persists_visibly_after_reconnect(tmp_path):
     reconnected = connect(settings)
     rules = SqliteRulesRepository(reconnected).list()
     reconnected.close()
-    assert len(rules) == 5
+    assert len(rules) == 7
     assert all(r.enabled for r in rules)
 
 

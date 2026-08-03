@@ -48,6 +48,18 @@ def _snapshot_age_sec(state: QueueState, now: datetime):
     return (now - state.last_event_ts).total_seconds()
 
 
+def _sla_risk_pct(state: QueueState, now: datetime):
+    """longest_wait_sec / sla_target_sec: 0.8 means "80% of the way to
+    breach," the glossary's "as it nears the deadline, at risk" concept the
+    breach-only rules (longest_wait_sec > sla_target_sec) can't express on
+    their own. MISSING, not a ZeroDivisionError or a guessed number, when
+    sla_target_sec is null or 0 -- same untrusted-input stance as
+    volume_forecast_next_15m above."""
+    if state.longest_wait_sec is None or not state.sla_target_sec:
+        return MISSING
+    return state.longest_wait_sec / state.sla_target_sec
+
+
 QUEUE_FACTS: list[FactSpec] = [
     FactSpec("tickets_waiting", SubjectType.QUEUE, "number", _tickets_waiting),
     FactSpec("longest_wait_sec", SubjectType.QUEUE, "number", _longest_wait_sec),
@@ -57,4 +69,5 @@ QUEUE_FACTS: list[FactSpec] = [
     FactSpec("volume_last_15m", SubjectType.QUEUE, "number", _volume_last_15m),
     FactSpec("volume_forecast_next_15m", SubjectType.QUEUE, "number", _volume_forecast_next_15m),
     FactSpec("snapshot_age_sec", SubjectType.QUEUE, "number", _snapshot_age_sec),
+    FactSpec("sla_risk_pct", SubjectType.QUEUE, "number", _sla_risk_pct),
 ]
